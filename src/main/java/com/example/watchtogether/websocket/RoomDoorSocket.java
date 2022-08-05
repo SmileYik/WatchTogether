@@ -54,7 +54,7 @@ public class RoomDoorSocket {
       return;
     }
 
-    if (this == videoRoom.getHost()) {
+    if (this == videoRoom.getHost() && !msg.equals("heart")) {
       videoRoom.getClients().forEach(it -> it.sendMessage(msg));
     }
   }

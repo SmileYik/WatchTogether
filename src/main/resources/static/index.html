@@ -2,37 +2,96 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="referrer" content="never"/>
+    <meta http-equiv="Access-Control-Allow-Origin" content="*">
     <title>一起看</title>
+    <script src="http://unpkg.byted-static.com/xgplayer/2.31.2/browser/index.js" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.2.0"></script>
 </head>
 <body>
 
-<span>RoomId：</span>
-<input id="room_id" type="text" />
-<button onclick="connect()">connect</button>
-<br/>
-<span>Local Url: </span>
-<input id="video_local_url" type="text" />
-<br/>
-<span>Url: </span>
-<input id="video_url" type="text" />
-<button onclick="bindUrl()">open</button>
-<br/>
-<video id="video_src" controls="controls" preload="auto">
-</video>
-<br/>
-<button onclick="doSame()">同步</button>
+<label for="search-box">搜索视频链接：</label><input id="search-box" type="text">
+<label for="search-wait-time">搜索等待时间(秒)：</label><input id="search-wait-time" type="number" value="2">
+<button onclick="searchVideo()">搜索</button>
+<pre id="search-result">
 
+</pre>
+<hr/>
+
+<label for="room_id">房间id：</label><input id="room_id" type="text" />
+<label for="enable-wss" hidden >启用WSS</label><input id="enable-wss" type="checkbox" value="wss" hidden />
+<button onclick="connect()">连接</button>
+<button onclick="disconnect()">断开</button>
+<br/>
+<label for="video_local_url">本地使用播放链接: </label><input id="video_local_url" type="text" />
+<br/>
+<label for="video_url">远程使用播放链接: </label><input id="video_url" type="text" />
+<button onclick="bindUrl()">应用链接</button>
+<button onclick="doSame()">主机强制同步</button>
+<button onclick="refreshUrl()">更新客户端连接</button>
+<br/>
+<span id="info">(若主机要求开始播放但是你没有开始播放则需要你手动播放一次后即可让主机控制)</span>
+<hr/>
+<div id="video_wrapper"></div>
 <script>
-    var ws;
-    var host = 0;
-    var url;
-    const video = document.getElementById("video_src")
+
+    let nowUrl = location.href
+    if (nowUrl.startsWith("https://")) {
+        location.href = "http://" + location.href.substring(8)
+    }
+
+    let player = new Player({
+        "id": "video_wrapper",
+        "url": "http://chimee.pyzy.net/vod/1.mp4",
+        "playsinline": true,
+        "whitelist": [
+            ""
+        ],
+        "pip": true,
+        "keyShortcut": "on",
+        "closeVideoClick": true,
+        "closeVideoDblclick": true,
+        "closeVideoTouch": true,
+        "x5-video-orientation": "landscape",
+        "x5-video-player-fullscreen": "true",
+        "playbackRate": [
+            0.5,
+            0.75,
+            1,
+            1.25,
+            1.5,
+            1.75,
+            2
+        ],
+        "videoInit": true
+    });
+    let ws;
+    let host = 0;
+    let url;
+    let video;
+    let id = -1
+    const info = document.getElementById("info")
+    const hostAddress = "localhost:8085"
+    let isPlay = false
 
     function connect() {
-        let roomId = document.getElementById("room_id").value;
-        ws = new WebSocket("ws://localhost:8080/room/" + roomId)
+        let roomId = document.getElementById("room_id").value
+        video = document.getElementsByTagName("video")[0]
+        let url = "://" + hostAddress + "/room/"
+        ws = new WebSocket((document.getElementById("enable-wss").checked ? "wss" : "ws") + url + roomId)
+        ws.onerror = function (error) {
+            console.log(error)
+            info.innerText = "连接错误！连接已断开！" + error
+        }
+
         ws.onopen = function () {
             console.log("open")
+            if (id !== -1) {
+                clearInterval(id)
+            }
+            id = setInterval(() => {
+                ws.send("heart")
+            }, 1000)
         }
 
         ws.onmessage = function (message) {
@@ -40,25 +99,31 @@
             console.log(msg)
             if (msg === 'host') {
                 host = 1
+                info.innerText = "你是主机， 你可以用打开及同步命令"
                 start()
             } else if (msg.startsWith("client")) {
                 host = 2
+                info.innerText = "你是观看者， 你只能观看"
                 ws.send("getVideo")
             } else if (msg.startsWith("http")) {
                 url = msg;
-                video.src = url
+                bindUrlToVideo(url)
             } else if (host === 1) {
 
             } else {
                 if (msg.startsWith("video")) {
                     url = msg.substring(5)
-                    video.src = url
+                    bindUrlToVideo(url)
+                    info.innerText = "开始观看：" + url
                 } else if (msg === "play") {
                     video.play();
+                    info.innerText = "开始播放";
                 } else if (msg === "pause") {
                     video.pause();
+                    info.innerText = "停止播放";
                 } else if (msg.startsWith("seek")) {
                     video.currentTime = msg.substring(4)
+                    info.innerText = "主机要求快进或快退";
                 } else if (msg.startsWith("same")) {
                     video.currentTime = msg.substring(5)
                     if (msg.startsWith("samet")) {
@@ -66,10 +131,18 @@
                     } else {
                         video.pause()
                     }
+                    info.innerText = "主机要求同步放映进度";
                 } else if (msg.startsWith("rate")) {
                     video.playbackRate = msg.substring(4);
+                    info.innerText = "主机要求更改放映速度";
                 }
             }
+        }
+
+        ws.onclose = function (res) {
+            info.innerText = "连接已断开！"
+            clearInterval(id)
+            console.log(res)
         }
     }
 
@@ -81,11 +154,21 @@
             if (videoLocalUrl === "") {
                 videoLocalUrl = videoUrl
             }
-            video.src = videoLocalUrl
+            bindUrlToVideo(videoLocalUrl)
+        } else {
+            info.innerText = "主机才能用哦！"
         }
     }
 
-    var isPlay = false
+    function bindUrlToVideo(videoLocalUrl) {
+        if (Hls.isSupported() && videoLocalUrl.indexOf(".m3u8") !== -1) {
+            var hls = new Hls()
+            hls.loadSource(videoLocalUrl)
+            hls.attachMedia(video)
+        } else {
+            video.src = videoLocalUrl
+        }
+    }
 
     function start() {
         video.onplay = () => {
@@ -116,8 +199,46 @@
     function doSame() {
         if (host === 1) {
             ws.send("same" + (isPlay ? 't' : 'f') + video.currentTime);
+        } else {
+            info.innerText = "主机才能用哦！"
         }
     }
+
+    function disconnect() {
+        ws.close()
+    }
+
+    function refreshUrl() {
+        if (host !== 1) {
+            ws.send("getVideo")
+        }
+    }
+
+    function searchVideo() {
+        const url = document.getElementById("search-box").value;
+        const wait = document.getElementById("search-wait-time").value;
+        if (url && url.startsWith("http")) {
+            let xhr = new XMLHttpRequest()
+            xhr.open("get", "http://" + hostAddress + "/video?wait=" + wait + "&url=" + encodeURI(url))
+            xhr.onreadystatechange = (res) => {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        const urls = JSON.parse(xhr.responseText)
+                        let text = "搜索到的结果如下：\n"
+                        for (let i = 0; i < urls.length; ++i) {
+                            text += urls[i] + "\n"
+                        }
+                        document.getElementById("search-result").innerText = text
+                    } else {
+                        document.getElementById("search-result").innerText = "未搜索成功..."
+                    }
+                }
+            }
+            document.getElementById("search-result").innerText = "正在搜索请稍后..."
+            xhr.send()
+        }
+    }
+
 </script>
 </body>
 </html>
