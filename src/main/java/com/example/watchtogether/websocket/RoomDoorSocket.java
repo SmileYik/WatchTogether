@@ -29,8 +29,10 @@ public class RoomDoorSocket {
     this.session = session;
     this.roomId = roomId;
     if (rooms.containsKey(roomId)) {
-      rooms.get(roomId).getClients().add(this);
+      VideoRoom videoRoom = rooms.get(roomId);
+      videoRoom.getClients().add(this);
       sendMessage("client");
+      System.out.println(session.getUserProperties());
     } else {
       VideoRoom room = new VideoRoom();
       room.setClients(new HashSet<>());
@@ -71,6 +73,8 @@ public class RoomDoorSocket {
           e.printStackTrace();
         }
       });
+    } else {
+      videoRoom.getClients().remove(this);
     }
     try {
       session.close();

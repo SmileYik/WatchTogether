@@ -17,10 +17,7 @@ import java.io.Closeable;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.time.Duration;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,10 +30,16 @@ import java.util.regex.Pattern;
 public class VideoUrlDog implements Closeable {
   private static final Pattern PATTERN = Pattern.compile("(?<=documentURL\":\")(http.*\")");
   private final WebDriver webDriver;
+  private final Collection<String> urls = new HashSet<>();
+  private final Set<WebElement> checkedIframes = new HashSet<>();
 
   public VideoUrlDog(String url) {
     ChromeOptions chromeOptions = new ChromeOptions();
     chromeOptions.setHeadless(true);
+    chromeOptions.addArguments("--headless");
+    chromeOptions.addArguments("--no-sandbox");
+    chromeOptions.addArguments("--disable-gpu");
+    chromeOptions.addArguments("--disable-dev-shm-usage");
     LoggingPreferences loggingPreferences = new LoggingPreferences();
     loggingPreferences.enable(LogType.PERFORMANCE, Level.ALL);
     chromeOptions.setCapability(CapabilityType.LOGGING_PREFS, loggingPreferences);
@@ -50,8 +53,7 @@ public class VideoUrlDog implements Closeable {
    * @return 视频链接.
    */
   public Collection<String> find(int waitTime) {
-    Collection<String> urls = new HashSet<>();
-    findVideoUrl(urls, webDriver, waitTime);
+    findVideoUrl(waitTime);
     Collection<String> m3u8s = analyzeLog();
     urls.addAll(m3u8s);
     return analyzeUrl(urls);
@@ -124,11 +126,9 @@ public class VideoUrlDog implements Closeable {
 
   /**
    * 搜索video标签内的src。
-   * @param urls 返回的链接集合.
-   * @param webDriver WebDriver
    * @param wait 等待时间（秒）
    */
-  private void findVideoUrl(Collection<String> urls, WebDriver webDriver, int wait) {
+  private void findVideoUrl(int wait) {
     // 查找是否有video标签
     WebDriverWait webDriverWait = new WebDriverWait(webDriver, Duration.ofSeconds(wait));
     try {
@@ -144,8 +144,17 @@ public class VideoUrlDog implements Closeable {
     // 搜索iframe
     List<WebElement> iframes = webDriver.findElements(By.tagName("iframe"));
     for (WebElement iframe : iframes) {
+      if (checkedIframes.contains(iframe)) {
+        continue;
+      }
+      checkedIframes.add(iframe);
+
       webDriver.switchTo().frame(iframe);
-      findVideoUrl(urls, webDriver, wait);
+      try {
+        findVideoUrl(wait);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
       webDriver.switchTo().parentFrame();
     }
   }

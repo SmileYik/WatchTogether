@@ -15,6 +15,8 @@ import java.nio.file.Paths;
 @ConfigurationProperties("watchtogether")
 public class WatchTogetherConfiguration {
   private String chromeDriverPath;
+  private String token = "123456";
+  private long videoDogCoolDown = 5 * 60 * 1000;
 
   public String getChromeDriverPath() {
     return chromeDriverPath;
@@ -27,5 +29,21 @@ public class WatchTogetherConfiguration {
     } catch (IOException e) {
       e.printStackTrace();
     }
+  }
+
+  public String getToken() {
+    return token;
+  }
+
+  public void setToken(String token) {
+    this.token = token;
+  }
+
+  public void setVideoDogCoolDown(long videoDogCoolDown) {
+    this.videoDogCoolDown = videoDogCoolDown;
+  }
+
+  public long getVideoDogCoolDown() {
+    return videoDogCoolDown;
   }
 }
