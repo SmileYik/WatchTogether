@@ -17,30 +17,39 @@ import java.util.Map;
  * @date 2022年08月02日 17:10
  */
 @Component
-@ServerEndpoint("/room/{roomId}")
+@ServerEndpoint("/room/{roomId}/{username}")
 public class RoomDoorSocket {
   private static final Map<String, VideoRoom> rooms = new HashMap<>();
 
   private String roomId;
+  private String username;
   private Session session;
+  private String sameHeart;
 
   @OnOpen
-  public void onOpen(Session session, @PathParam("roomId") String roomId) {
+  public void onOpen(Session session,
+                     @PathParam("roomId") String roomId,
+                     @PathParam("username") String username) {
     this.session = session;
     this.roomId = roomId;
+    this.username = username;
+    VideoRoom videoRoom;
     if (rooms.containsKey(roomId)) {
-      VideoRoom videoRoom = rooms.get(roomId);
+      videoRoom = rooms.get(roomId);
       videoRoom.getClients().add(this);
       sendMessage("client");
-      System.out.println(session.getUserProperties());
     } else {
-      VideoRoom room = new VideoRoom();
-      room.setClients(new HashSet<>());
-      room.setId(roomId);
-      room.setHost(this);
-      rooms.put(roomId, room);
+      videoRoom = new VideoRoom();
+      videoRoom.setClients(new HashSet<>());
+      videoRoom.setId(roomId);
+      videoRoom.setHost(this);
+      rooms.put(roomId, videoRoom);
       sendMessage("host");
     }
+    videoRoom.getHost().sendMessage("join" + username);
+    videoRoom.getClients().forEach(it -> {
+      it.sendMessage("join" + username);
+    });
   }
 
   @OnMessage
@@ -54,6 +63,12 @@ public class RoomDoorSocket {
     } else if (msg.startsWith("getVideo")) {
       sendMessage(String.valueOf(videoRoom.getUrl()));
       return;
+    } else if (msg.startsWith("hsame")) {
+      sameHeart = msg;
+      return;
+    } else if (msg.startsWith("doSame") && videoRoom.getHost().sameHeart != null) {
+      sendMessage(videoRoom.getHost().sameHeart.substring(1));
+      return;
     }
 
     if (this == videoRoom.getHost() && !msg.equals("heart")) {
@@ -64,18 +79,25 @@ public class RoomDoorSocket {
   @OnClose
   public void onClose() {
     VideoRoom videoRoom = rooms.get(roomId);
-    if (this == videoRoom.getHost()) {
-      rooms.remove(videoRoom.getId());
-      videoRoom.getClients().forEach(it -> {
-        try {
-          it.session.close();
-        } catch (IOException e) {
-          e.printStackTrace();
-        }
-      });
-    } else {
-      videoRoom.getClients().remove(this);
+    if (videoRoom != null) {
+      if (this == videoRoom.getHost()) {
+        rooms.remove(videoRoom.getId());
+        videoRoom.getClients().forEach(it -> {
+          try {
+            it.session.close();
+          } catch (IOException ignored) {
+
+          }
+        });
+      } else {
+        videoRoom.getClients().remove(this);
+        videoRoom.getClients().forEach(it -> {
+          it.sendMessage("exit" + username);
+        });
+        videoRoom.getHost().sendMessage("exit" + username);
+      }
     }
+
     try {
       session.close();
     } catch (IOException e) {
