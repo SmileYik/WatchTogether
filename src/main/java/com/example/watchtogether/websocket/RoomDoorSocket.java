@@ -35,10 +35,12 @@ public class RoomDoorSocket {
     this.username = username;
     VideoRoom videoRoom;
     if (rooms.containsKey(roomId)) {
+      // 房间已经存在，加入此房间
       videoRoom = rooms.get(roomId);
       videoRoom.getClients().add(this);
       sendMessage("client");
     } else {
+      // 房间不存在，创建此房间
       videoRoom = new VideoRoom();
       videoRoom.setClients(new HashSet<>());
       videoRoom.setId(roomId);
@@ -90,11 +92,16 @@ public class RoomDoorSocket {
           }
         });
       } else {
-        videoRoom.getClients().remove(this);
-        videoRoom.getClients().forEach(it -> {
-          it.sendMessage("exit" + username);
-        });
-        videoRoom.getHost().sendMessage("exit" + username);
+        try {
+          videoRoom.getClients().remove(this);
+          videoRoom.getClients().forEach(it -> {
+            it.sendMessage("exit" + username);
+          });
+        } catch (Exception ignored) {
+
+        } finally {
+          videoRoom.getHost().sendMessage("exit" + username);
+        }
       }
     }
 
