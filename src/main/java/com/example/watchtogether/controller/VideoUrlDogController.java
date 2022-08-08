@@ -1,6 +1,7 @@
 package com.example.watchtogether.controller;
 
 import com.example.watchtogether.config.WatchTogetherConfiguration;
+import com.example.watchtogether.util.StatisticHelper;
 import com.example.watchtogether.util.VideoUrlDog;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +18,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
 @CrossOrigin
 @RestController
 @RequestMapping("/video")
-public class VideoUrlController {
+public class VideoUrlDogController {
   private WatchTogetherConfiguration watchTogetherConfiguration;
   private final Set<String> requests = new ConcurrentSkipListSet<>();
 
@@ -31,7 +32,7 @@ public class VideoUrlController {
                                         @RequestParam("url") String oriUrl,
                                         @RequestParam(value = "wait", defaultValue = "5") int wait,
                                         @RequestParam(value = "token", required = false, defaultValue = "") String token) {
-
+    StatisticHelper.addUesVideoUrlDogTimes();
     Collection<String> collection = new ArrayList<>();
     if (!watchTogetherConfiguration.getToken().equals(token)) {
       String remoteHost = servletRequest.getRemoteHost();
@@ -52,9 +53,6 @@ public class VideoUrlController {
         }
       }, watchTogetherConfiguration.getVideoDogCoolDown());
     }
-
-
-
 
     long time = System.currentTimeMillis();
     try (VideoUrlDog videoUrlDog = new VideoUrlDog(oriUrl)) {

@@ -1,6 +1,7 @@
 package com.example.watchtogether.websocket;
 
 import com.example.watchtogether.entity.VideoRoom;
+import com.example.watchtogether.util.StatisticHelper;
 import org.springframework.stereotype.Component;
 
 import javax.websocket.*;
@@ -47,11 +48,14 @@ public class RoomDoorSocket {
       videoRoom.setHost(this);
       rooms.put(roomId, videoRoom);
       sendMessage("host");
+      StatisticHelper.addCreatedRoomsCount(roomId);
     }
     videoRoom.getHost().sendMessage("join" + username);
     videoRoom.getClients().forEach(it -> {
       it.sendMessage("join" + username);
     });
+    StatisticHelper.addWatchTime(username);
+    StatisticHelper.updateRooms(rooms);
   }
 
   @OnMessage
@@ -62,6 +66,7 @@ public class RoomDoorSocket {
     } else if (msg.startsWith("video")) {
       String url = msg.substring(5);
       videoRoom.setUrl(url);
+      StatisticHelper.addLink(url);
     } else if (msg.startsWith("getVideo")) {
       sendMessage(String.valueOf(videoRoom.getUrl()));
       return;
@@ -96,6 +101,7 @@ public class RoomDoorSocket {
           videoRoom.getClients().remove(this);
           videoRoom.getClients().forEach(it -> {
             it.sendMessage("exit" + username);
+
           });
         } catch (Exception ignored) {
 
@@ -110,6 +116,8 @@ public class RoomDoorSocket {
     } catch (IOException e) {
       e.printStackTrace();
     }
+
+    StatisticHelper.updateRooms(rooms);
   }
 
   @OnError
@@ -123,5 +131,9 @@ public class RoomDoorSocket {
     } catch (IOException e) {
       e.printStackTrace();
     }
+  }
+
+  public String getUsername() {
+    return username;
   }
 }
